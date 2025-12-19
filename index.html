@@ -200,24 +200,26 @@
                     <div class="mt-5 pt-5 border-t border-retro-bg">
                         <!-- Mode Tabs -->
                         <div class="flex space-x-2 mb-4 bg-retro-bg p-1.5 rounded-xl w-fit border border-retro-khaki">
-                            <button onclick="app.setInsMode('simple')" id="ins-mode-simple" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center bg-retro-khaki text-retro-black shadow-md">
+                            <!-- 已修正：預設為分期模式，調整單筆按鈕樣式為非使用中 -->
+                            <button onclick="app.setInsMode('simple')" id="ins-mode-simple" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center text-retro-olive hover:bg-retro-khaki/50">
                                 <i data-lucide="coins" class="mr-1.5 w-3 h-3"></i>單筆
                             </button>
-                            <button onclick="app.setInsMode('installment')" id="ins-mode-installment" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center text-retro-olive hover:bg-retro-khaki/50">
+                            <!-- 已修正：預設為分期模式，調整分期按鈕樣式為使用中 -->
+                            <button onclick="app.setInsMode('installment')" id="ins-mode-installment" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center bg-retro-khaki text-retro-black shadow-md">
                                 <i data-lucide="repeat" class="mr-1.5 w-3 h-3"></i>分期
                             </button>
                         </div>
 
                         <input type="text" id="ins-name" placeholder="保險名稱" class="w-full bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none mb-2 focus:border-retro-olive transition-all placeholder-retro-olive/50">
 
-                        <!-- Simple Input -->
-                        <div id="ins-input-simple" class="flex gap-2">
+                        <!-- Simple Input (已修正：預設隱藏) -->
+                        <div id="ins-input-simple" class="hidden gap-2">
                             <input type="number" id="ins-amount-simple" placeholder="金額" class="flex-1 bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive placeholder-retro-olive/50">
                             <button onclick="app.addInsurance()" class="bg-retro-khaki text-retro-black rounded-xl px-5 py-2 hover:bg-[#bda570] active:scale-95 transition-all shadow-md"><i data-lucide="plus" class="w-[18px] h-[18px]"></i></button>
                         </div>
 
-                        <!-- Installment Input -->
-                        <div id="ins-input-installment" class="hidden">
+                        <!-- Installment Input (已修正：預設顯示) -->
+                        <div id="ins-input-installment" class="block">
                             <div class="grid grid-cols-3 gap-2 mb-3">
                                 <input type="number" id="ins-total" placeholder="總額" class="bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive placeholder-retro-olive/50">
                                 <select id="ins-total-periods" class="bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive appearance-none"></select>
@@ -352,6 +354,8 @@
             init: () => {
                 app.initDropdowns();
                 app.loadData();
+                // 關鍵修復：初始化時強制同步保險的顯示模式，確保 HTML 與 store.insMode 一致
+                app.setInsMode(store.insMode);
                 app.render();
                 lucide.createIcons();
             },
@@ -650,10 +654,23 @@
             showNotification: (msg, type = 'success') => {
                 const container = document.getElementById('notification-container');
                 const div = document.createElement('div');
-                div.className = `p-4 rounded-xl shadow-2xl flex items-center justify-between text-retro-bg transition-all transform translate-y-0 border border-retro-black ${type === 'error' ? 'bg-retro-orange' : 'bg-retro-black'}`;
-                div.innerHTML = `<span class="font-bold text-sm tracking-wide">${msg}</span>`;
+                // Use pointer-events-auto so the button is clickable, gap-3 for spacing
+                div.className = `pointer-events-auto p-4 rounded-xl shadow-2xl flex items-center justify-between text-retro-bg transition-all transform translate-y-0 border border-retro-black gap-3 ${type === 'error' ? 'bg-retro-orange' : 'bg-retro-black'}`;
+                
+                // Add message and close button
+                div.innerHTML = `
+                    <span class="font-bold text-sm tracking-wide flex-1">${msg}</span>
+                    <button class="text-retro-bg/70 hover:text-white transition-colors p-1 -mr-2">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                `;
+                
+                // Close button logic
+                div.querySelector('button').onclick = () => div.remove();
+
                 container.appendChild(div);
-                setTimeout(() => div.remove(), 3000);
+                lucide.createIcons();
+                setTimeout(() => { if(div.parentNode) div.remove(); }, 3000);
             },
 
             // --- UI Rendering ---
@@ -879,77 +896,6 @@
                     document.getElementById('nav-btn-history').className = "flex flex-col items-center p-2 rounded-2xl flex-1 transition-all text-retro-orange bg-retro-bg";
                     app.renderHistory();
                 }
-            },
-
-            openModal: (action, index) => {
-                const record = store.history[index];
-                if(!record) return;
-                
-                const container = document.getElementById('modal-container');
-                const title = document.getElementById('modal-title');
-                const desc1 = document.getElementById('modal-desc-1');
-                const desc2 = document.getElementById('modal-desc-2');
-                const btn = document.getElementById('modal-confirm-btn');
-                const icon = document.getElementById('modal-icon');
-
-                container.classList.remove('hidden');
-                
-                if(action === 'delete') {
-                    title.innerText = '確定要刪除嗎？';
-                    title.className = "text-lg font-bold text-retro-orange";
-                    icon.classList.remove('hidden');
-                    desc1.innerHTML = `您選擇的月份：<strong class="text-retro-orange">${record.month}</strong>`;
-                    desc2.innerText = "此動作無法復原，這筆紀錄將會永久消失。";
-                    btn.innerText = "確認刪除";
-                    btn.className = "flex-1 py-3.5 rounded-xl text-retro-bg font-bold text-sm shadow-lg transition-all active:scale-95 border border-retro-black bg-retro-orange hover:bg-[#d14e1d]";
-                    btn.onclick = () => { app.deleteHistory(record.id); };
-                } else {
-                    title.innerText = '確定要載入舊資料？';
-                    title.className = "text-lg font-bold text-retro-black";
-                    icon.classList.add('hidden');
-                    desc1.innerHTML = `您選擇的月份：<strong class="text-retro-orange">${record.month}</strong>`;
-                    desc2.innerText = "載入後，您目前的編輯內容將會被此舊資料覆蓋。";
-                    btn.innerText = "確認載入";
-                    btn.className = "flex-1 py-3.5 rounded-xl text-retro-bg font-bold text-sm shadow-lg transition-all active:scale-95 border border-retro-black bg-retro-black hover:bg-[#000000]";
-                    btn.onclick = () => { app.loadHistory(record); };
-                }
-            },
-
-            closeModal: () => {
-                document.getElementById('modal-container').classList.add('hidden');
-            },
-
-            deleteHistory: (id) => {
-                store.history = store.history.filter(h => h.id !== id);
-                app.saveData();
-                app.renderHistory();
-                app.showNotification("已刪除紀錄");
-                app.closeModal();
-            },
-
-            loadHistory: (record) => {
-                store.salary = record.salary;
-                const sInput = record.savingsInput !== undefined ? record.savingsInput : Math.floor(record.salary * 0.3);
-                store.savingsInput = sInput;
-                store.isSavingsManual = sInput != Math.floor(record.salary * 0.3);
-                store.fixedExpenses = record.fixedExpenses || [];
-                store.insuranceExpenses = record.insuranceExpenses || [];
-                store.currentMonth = record.month;
-                
-                app.saveData();
-                app.switchTab('current');
-                app.closeModal();
-                app.showNotification(`已載入 ${record.month} 資料`);
-                app.render();
-            },
-
-            showNotification: (msg, type = 'success') => {
-                const container = document.getElementById('notification-container');
-                const div = document.createElement('div');
-                div.className = `p-4 rounded-xl shadow-2xl flex items-center justify-between text-retro-bg transition-all transform translate-y-0 border border-retro-black ${type === 'error' ? 'bg-retro-orange' : 'bg-retro-black'}`;
-                div.innerHTML = `<span class="font-bold text-sm tracking-wide">${msg}</span>`;
-                container.appendChild(div);
-                setTimeout(() => div.remove(), 3000);
             }
         };
 
