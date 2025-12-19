@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <!-- 關鍵修復：加入 viewport-fit=cover 確保滿版 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>薪水分配</title>
+    <meta name="description" content="這是一個簡單、美觀且實用的個人理財工具，專為手機瀏覽設計。它可以協助您將每月的薪水依照「6-3-1 法則」或其他自訂比例進行分配，並追蹤固定支出與保險費用。">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body { 
+            font-family: 'Noto Sans TC', sans-serif; 
+            -webkit-tap-highlight-color: transparent;
+            /* 關鍵修復：禁止橡皮筋回彈效果，避免底部選單位移 */
+            overscroll-behavior-y: none;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .transition-all { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 300ms; }
+        
+        /* 針對 iOS 的底部安全區域修復 */
+        .safe-pb {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        retro: {
+                            bg: '#FFFCF2',
+                            yellow: '#fbd568',
+                            orange: '#EB5E28',
+                            black: '#252422',
+                            olive: '#403D39',
+                            khaki: '#CCC589',
+                            gray: '#9CA3AF'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-retro-bg text-retro-black min-h-screen relative selection:bg-retro-orange selection:text-white pb-32">
+
+    <!-- Notifications Container -->
+    <div id="notification-container" class="fixed top-16 left-4 right-4 z-[60] flex flex-col gap-2 pointer-events-none transition-all duration-300"></div>
+
+    <!-- Modal Container -->
+    <div id="modal-container" class="fixed inset-0 z-[60] hidden">
+        <div class="absolute inset-0 bg-retro-black/80 backdrop-blur-sm" onclick="app.closeModal()"></div>
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-retro-bg rounded-3xl p-6 w-[90%] max-w-sm shadow-2xl border-4 border-retro-olive">
+            <div class="flex items-center mb-3">
+                <i id="modal-icon" data-lucide="alert-triangle" class="text-retro-orange mr-3 hidden"></i>
+                <h3 id="modal-title" class="text-lg font-bold text-retro-black"></h3>
+            </div>
+            <p id="modal-desc-1" class="text-retro-olive text-sm mb-2"></p>
+            <p id="modal-desc-2" class="text-retro-olive/70 text-xs mb-8 leading-relaxed font-bold"></p>
+            <div class="flex gap-3">
+                <button onclick="app.closeModal()" class="flex-1 py-3.5 rounded-xl bg-retro-khaki text-retro-black font-bold text-sm hover:bg-[#bda570] transition-colors border border-retro-olive">取消</button>
+                <button id="modal-confirm-btn" class="flex-1 py-3.5 rounded-xl text-retro-bg font-bold text-sm shadow-lg transition-all active:scale-95 border border-retro-black"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Indicator -->
+    <div class="fixed top-4 right-4 z-[55] flex items-center bg-white px-3 py-1.5 rounded-full shadow-md text-[10px] font-bold text-retro-olive border border-retro-black" id="status-indicator">
+        <i data-lucide="hard-drive" class="mr-1.5 text-retro-olive w-3 h-3"></i> 本機儲存
+    </div>
+
+    <!-- Main Content Area -->
+    <div id="app-content">
+        
+        <!-- Tab: Current Month -->
+        <div id="tab-current" class="space-y-6 max-w-md mx-auto pt-4">
+            
+            <!-- Header Card (Salary) -->
+            <div class="mx-4 bg-retro-yellow p-6 rounded-[2rem] shadow-[4px_4px_0px_0px_#403D39] border-2 border-retro-black relative overflow-hidden group">
+                <div class="flex justify-between items-center text-retro-black mb-8 relative z-10">
+                    <h1 class="text-xl font-bold flex items-center tracking-tight">
+                        <i data-lucide="wallet" class="mr-2.5 text-retro-black w-6 h-6"></i> 薪水分配
+                    </h1>
+                    <input type="month" id="current-month-input" class="bg-retro-black/10 text-retro-black border border-retro-black/30 rounded-lg px-3 py-1.5 text-xs focus:outline-none font-bold">
+                </div>
+                <div class="relative z-10">
+                    <label class="text-retro-black/70 text-xs font-bold mb-2 block uppercase tracking-wider">本月實領薪水</label>
+                    <div class="flex items-baseline border-b-2 border-retro-black/30 pb-2">
+                        <span class="text-retro-black text-2xl mr-3 font-light">$</span>
+                        <input type="number" id="salary-input" placeholder="0" class="bg-transparent text-retro-black text-5xl font-bold w-full outline-none placeholder-retro-black/30 tracking-tight">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Card -->
+            <div class="px-4">
+                <div class="bg-white p-6 rounded-3xl shadow-[4px_4px_0px_0px_#403D39] border-2 border-retro-olive transition-all relative overflow-hidden">
+                    <!-- Monthly Disposable -->
+                    <div class="text-center mb-6">
+                        <p class="text-retro-olive/70 text-xs mb-2 font-bold tracking-widest uppercase">本月可自由運用總額</p>
+                        <p id="disposable-income-display" class="text-5xl font-black tracking-tighter text-retro-black">0</p>
+                    </div>
+
+                    <!-- Daily Disposable -->
+                    <div class="bg-retro-bg rounded-2xl p-4 flex justify-between items-center border border-retro-khaki">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] text-retro-olive font-bold uppercase tracking-wider mb-0.5">Daily Budget</span>
+                            <span id="days-in-month" class="text-xs text-retro-black font-medium">30 天平均</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div id="daily-disposable-display" class="text-2xl font-bold text-retro-olive">0</div>
+                            <span class="text-[10px] text-retro-olive/60 ml-1.5 self-end mb-1">/日</span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Chart -->
+                    <div id="dashboard-chart" class="hidden mt-6 pt-5 border-t-2 border-retro-bg">
+                        <div class="flex items-center text-retro-black font-bold text-xs mb-4">
+                            <i data-lucide="pie-chart" class="mr-2 text-retro-orange w-3.5 h-3.5"></i>
+                            <span>本月分配佔比</span>
+                        </div>
+                        
+                        <div class="h-4 w-full bg-retro-bg rounded-full overflow-hidden flex border border-retro-olive" id="progress-bar-container"></div>
+
+                        <div class="grid grid-cols-4 gap-2 mt-3 text-[10px] text-retro-olive font-bold">
+                            <div class="text-center flex flex-col items-center">
+                                <span class="w-2 h-2 bg-retro-orange rounded-full mb-1"></span>
+                                儲蓄 <span id="pct-savings">0%</span>
+                            </div>
+                            <div class="text-center flex flex-col items-center">
+                                <span class="w-2 h-2 bg-retro-khaki rounded-full mb-1"></span>
+                                保險 <span id="pct-insurance">0%</span>
+                            </div>
+                            <div class="text-center flex flex-col items-center">
+                                <span class="w-2 h-2 bg-retro-olive rounded-full mb-1"></span>
+                                生活 <span id="pct-fixed">0%</span>
+                            </div>
+                            <div class="text-center flex flex-col items-center">
+                                <span class="w-2 h-2 bg-retro-gray rounded-full mb-1"></span>
+                                剩餘 <span id="pct-remaining">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Savings Card (Orange Border, Orange BG for Card) -->
+            <div class="px-4">
+                <div class="bg-retro-orange p-5 rounded-3xl shadow-md border-2 border-retro-black relative">
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="flex items-center">
+                            <div class="bg-retro-bg/20 p-2 rounded-xl mr-3 text-retro-bg">
+                                <i data-lucide="piggy-bank" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-retro-bg">30% 儲蓄</h3>
+                                <p class="text-[10px] text-retro-bg/80 font-medium mt-0.5">目標：<span id="savings-advice">0</span></p>
+                            </div>
+                        </div>
+                        <button onclick="app.resetSavings()" class="text-[10px] flex items-center bg-retro-bg text-retro-orange px-3 py-1.5 rounded-full hover:bg-retro-black hover:text-retro-bg transition-colors font-bold shadow-sm border border-retro-orange">
+                            <i data-lucide="rotate-ccw" class="mr-1.5 w-2.5 h-2.5"></i> 重置
+                        </button>
+                    </div>
+                    <div class="relative mt-2">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-retro-bg font-bold">$</span>
+                        <input type="number" id="savings-input" placeholder="輸入儲蓄金額" class="w-full bg-retro-bg/10 border-2 border-retro-bg/30 text-retro-bg font-bold text-xl rounded-xl py-3 pl-7 pr-4 focus:outline-none focus:bg-retro-bg/20 transition-all placeholder-retro-bg/50">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Insurance Card (Khaki Border) -->
+            <div class="px-4">
+                <div class="bg-white p-5 rounded-3xl shadow-md border-2 border-retro-khaki relative">
+                    <div class="flex justify-between items-start mb-3">
+                        <div class="flex items-center">
+                            <div class="bg-retro-khaki p-2 rounded-xl mr-3 text-retro-black">
+                                <i data-lucide="shield" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-retro-black">10% 保險</h3>
+                                <p class="text-[10px] text-retro-olive font-medium mt-0.5">目標: <span id="insurance-advice">0</span></p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span id="insurance-total-display" class="text-lg font-bold text-retro-olive">0</span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div id="insurance-progress-container" class="mt-3"></div>
+
+                    <!-- Input Area -->
+                    <div class="mt-5 pt-5 border-t border-retro-bg">
+                        <!-- Mode Tabs -->
+                        <div class="flex space-x-2 mb-4 bg-retro-bg p-1.5 rounded-xl w-fit border border-retro-khaki">
+                            <button onclick="app.setInsMode('simple')" id="ins-mode-simple" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center bg-retro-khaki text-retro-black shadow-md">
+                                <i data-lucide="coins" class="mr-1.5 w-3 h-3"></i>單筆
+                            </button>
+                            <button onclick="app.setInsMode('installment')" id="ins-mode-installment" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center text-retro-olive hover:bg-retro-khaki/50">
+                                <i data-lucide="repeat" class="mr-1.5 w-3 h-3"></i>分期
+                            </button>
+                        </div>
+
+                        <input type="text" id="ins-name" placeholder="保險名稱" class="w-full bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none mb-2 focus:border-retro-olive transition-all placeholder-retro-olive/50">
+
+                        <!-- Simple Input -->
+                        <div id="ins-input-simple" class="flex gap-2">
+                            <input type="number" id="ins-amount-simple" placeholder="金額" class="flex-1 bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive placeholder-retro-olive/50">
+                            <button onclick="app.addInsurance()" class="bg-retro-khaki text-retro-black rounded-xl px-5 py-2 hover:bg-[#bda570] active:scale-95 transition-all shadow-md"><i data-lucide="plus" class="w-[18px] h-[18px]"></i></button>
+                        </div>
+
+                        <!-- Installment Input -->
+                        <div id="ins-input-installment" class="hidden">
+                            <div class="grid grid-cols-3 gap-2 mb-3">
+                                <input type="number" id="ins-total" placeholder="總額" class="bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive placeholder-retro-olive/50">
+                                <select id="ins-total-periods" class="bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive appearance-none"></select>
+                                <select id="ins-current-period" class="bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive appearance-none"></select>
+                            </div>
+                            <div class="flex justify-between items-center bg-retro-bg p-3 rounded-xl border border-retro-khaki border-dashed">
+                                <div class="text-xs text-retro-olive" id="ins-calc-preview">
+                                    <span class="text-retro-olive/70 font-bold">填寫上方欄位試算</span>
+                                </div>
+                                <button onclick="app.addInsurance()" class="bg-retro-khaki text-retro-black rounded-lg px-4 py-1.5 text-xs font-bold shadow-md hover:bg-[#bda570] transition-all">加入分期</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- List -->
+                    <div id="insurance-list" class="space-y-2 mt-4"></div>
+                </div>
+            </div>
+
+            <!-- 60% Life - Card (Olive Border) -->
+            <div class="px-4">
+                <div class="bg-white p-5 rounded-3xl shadow-md border-2 border-retro-olive relative">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex items-center">
+                            <div class="bg-retro-olive p-2 rounded-xl mr-3 text-retro-bg"><i data-lucide="trending-up" class="w-5 h-5"></i></div>
+                            <div>
+                                <h3 class="font-bold text-retro-black">60% 生活預算</h3>
+                                <p class="text-[10px] text-retro-olive font-medium mt-0.5">總額度: <span id="living-budget-advice">0</span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Visualizer -->
+                    <div id="fixed-visualizer"></div>
+
+                    <!-- Input Area -->
+                    <div class="mt-5 pt-5 border-t border-retro-bg">
+                        <!-- Mode Tabs -->
+                        <div class="flex space-x-2 mb-4 bg-retro-bg p-1.5 rounded-xl w-fit border border-retro-khaki">
+                            <button onclick="app.setFixedMode('simple')" id="fixed-mode-simple" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center bg-retro-olive text-retro-bg shadow-md">
+                                <i data-lucide="coins" class="mr-1.5 w-3 h-3"></i>單筆
+                            </button>
+                            <button onclick="app.setFixedMode('installment')" id="fixed-mode-installment" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center text-retro-olive hover:bg-retro-khaki/50">
+                                <i data-lucide="repeat" class="mr-1.5 w-3 h-3"></i>分期
+                            </button>
+                        </div>
+
+                        <input type="text" id="fixed-name" placeholder="固定支出名稱" class="w-full bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none mb-2 focus:border-retro-olive transition-all placeholder-retro-olive/50">
+
+                        <!-- Simple -->
+                        <div id="fixed-input-simple" class="flex gap-2">
+                            <input type="number" id="fixed-amount-simple" placeholder="金額" class="flex-1 bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive placeholder-retro-olive/50">
+                            <button onclick="app.addFixed()" class="bg-retro-olive text-retro-bg rounded-xl px-5 py-2 hover:bg-retro-black active:scale-95 transition-all shadow-md"><i data-lucide="plus" class="w-[18px] h-[18px]"></i></button>
+                        </div>
+
+                        <!-- Installment -->
+                        <div id="fixed-input-installment" class="hidden space-y-2">
+                            <div class="grid grid-cols-3 gap-2 mb-1">
+                                <input type="number" id="fixed-total" placeholder="總額" class="bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive placeholder-retro-olive/50">
+                                <input type="number" id="fixed-total-periods" placeholder="總期" class="bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive placeholder-retro-olive/50">
+                                <input type="number" id="fixed-current-period" placeholder="本期" class="bg-retro-bg border border-retro-khaki rounded-xl p-3 text-sm text-retro-black outline-none focus:border-retro-olive placeholder-retro-olive/50">
+                            </div>
+                            <div class="flex justify-between items-center bg-retro-bg p-3 rounded-xl border border-retro-khaki border-dashed">
+                                <div class="text-xs text-retro-olive" id="fixed-calc-preview">
+                                    <span class="text-retro-olive/70 font-bold">請填寫完整</span>
+                                </div>
+                                <button onclick="app.addFixed()" class="bg-retro-olive text-retro-bg rounded-lg px-4 py-1.5 text-xs font-bold shadow-md hover:bg-retro-black transition-all">加入分期</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- List -->
+                    <div id="fixed-list" class="space-y-2 mt-4 max-h-48 overflow-y-auto no-scrollbar"></div>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="px-4 pb-4">
+                <button onclick="app.saveToHistory()" class="w-full bg-retro-black hover:bg-retro-olive text-retro-bg py-4 rounded-2xl flex items-center justify-center space-x-2 shadow-[4px_4px_0px_0px_#CCC589] border border-retro-olive active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 group">
+                    <i data-lucide="save" class="text-retro-khaki group-hover:text-white transition-colors w-5 h-5"></i>
+                    <span class="font-bold tracking-wide">封存本月帳務</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab: History -->
+        <div id="tab-history" class="hidden p-4 space-y-4 max-w-md mx-auto pt-4">
+            <div class="flex items-center justify-between mb-4 px-2">
+                <h2 class="text-xl font-bold text-retro-black flex items-center">
+                    <i data-lucide="history" class="mr-2.5 text-retro-orange w-6 h-6"></i> 歷史帳本
+                </h2>
+                <span id="history-count" class="text-xs text-retro-bg bg-retro-olive px-2.5 py-1 rounded-lg">0 筆</span>
+            </div>
+            
+            <div id="history-list-container"></div>
+        </div>
+
+    </div>
+
+    <!-- Bottom Nav -->
+    <div class="fixed bottom-0 left-0 right-0 bg-retro-bg border-t-2 border-retro-black flex justify-around p-2 z-50 safe-area-pb shadow-lg pb-safe">
+        <button onclick="app.switchTab('current')" id="nav-btn-current" class="flex flex-col items-center p-2 rounded-2xl flex-1 transition-all text-retro-orange bg-retro-bg">
+            <i data-lucide="layout-dashboard" class="w-[22px] h-[22px]"></i>
+            <span class="text-[10px] mt-1.5 font-bold">當月規劃</span>
+        </button>
+        <button onclick="app.switchTab('history')" id="nav-btn-history" class="flex flex-col items-center p-2 rounded-2xl flex-1 transition-all text-retro-olive hover:bg-retro-khaki/20">
+            <i data-lucide="history" class="w-[22px] h-[22px]"></i>
+            <span class="text-[10px] mt-1.5 font-bold">歷史帳本</span>
+        </button>
+    </div>
+
+    <!-- Application Logic (LocalStorage) -->
+    <script>
+        // State Store
+        const store = {
+            activeTab: 'current',
+            currentMonth: new Date().toISOString().slice(0, 7),
+            salary: '',
+            savingsInput: '',
+            isSavingsManual: false,
+            fixedMode: 'simple',
+            insMode: 'installment',
+            fixedExpenses: [],
+            insuranceExpenses: [],
+            history: []
+        };
+
+        const STORAGE_KEY_CURRENT = 'budget_app_current';
+        const STORAGE_KEY_HISTORY = 'budget_app_history';
+
+        window.app = {
+            init: () => {
+                app.initDropdowns();
+                app.loadData();
+                app.render();
+                lucide.createIcons();
+            },
+
+            initDropdowns: () => {
+                const periods = Array.from({length: 12}, (_, i) => i + 1);
+                const opts = periods.map(p => `<option value="${p}">${p}期</option>`).join('');
+                const optsCurrent = periods.map(p => `<option value="${p}">第${p}期</option>`).join('');
+                document.getElementById('ins-total-periods').innerHTML = opts;
+                document.getElementById('ins-current-period').innerHTML = optsCurrent;
+                document.getElementById('ins-total-periods').value = '12';
+                document.getElementById('ins-current-period').value = '1';
+            },
+
+            loadData: () => {
+                const currentData = localStorage.getItem(STORAGE_KEY_CURRENT);
+                const historyData = localStorage.getItem(STORAGE_KEY_HISTORY);
+
+                if (currentData) {
+                    const data = JSON.parse(currentData);
+                    store.salary = data.salary || '';
+                    store.savingsInput = data.savingsInput || '';
+                    store.fixedExpenses = data.fixedExpenses || [];
+                    store.insuranceExpenses = data.insuranceExpenses || [];
+                    store.currentMonth = data.currentMonth || new Date().toISOString().slice(0, 7);
+                    
+                    const calc = Math.floor(parseInt(store.salary || 0) * 0.3).toString();
+                    if (store.savingsInput && store.savingsInput !== calc && store.savingsInput !== '0') {
+                        store.isSavingsManual = true;
+                    }
+                }
+
+                if (historyData) {
+                    store.history = JSON.parse(historyData);
+                }
+            },
+
+            saveData: () => {
+                localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify({
+                    salary: store.salary,
+                    savingsInput: store.savingsInput,
+                    fixedExpenses: store.fixedExpenses,
+                    insuranceExpenses: store.insuranceExpenses,
+                    currentMonth: store.currentMonth
+                }));
+                localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(store.history));
+                
+                // Visual feedback only
+                const statusEl = document.getElementById('status-indicator');
+                statusEl.classList.add('bg-green-100');
+                setTimeout(() => statusEl.classList.remove('bg-green-100'), 500);
+            },
+
+            // --- Logic ---
+            updateSalary: (val) => {
+                store.salary = val;
+                if (!store.isSavingsManual) {
+                    const calc = Math.floor(parseInt(val || 0) * 0.3);
+                    store.savingsInput = calc > 0 ? calc.toString() : '';
+                }
+                app.render();
+                app.saveData();
+            },
+
+            updateSavings: (val) => {
+                store.savingsInput = val;
+                store.isSavingsManual = true;
+                app.render();
+                app.saveData();
+            },
+
+            resetSavings: () => {
+                store.isSavingsManual = false;
+                const calc = Math.floor(parseInt(store.salary || 0) * 0.3);
+                store.savingsInput = calc > 0 ? calc.toString() : '';
+                app.showNotification("已重置為 30%");
+                app.render();
+                app.saveData();
+            },
+
+            updateMonth: (val) => {
+                store.currentMonth = val;
+                app.render();
+                app.saveData();
+            },
+
+            setFixedMode: (mode) => {
+                store.fixedMode = mode;
+                const simpleBtn = document.getElementById('fixed-mode-simple');
+                const instBtn = document.getElementById('fixed-mode-installment');
+                const simpleInput = document.getElementById('fixed-input-simple');
+                const instInput = document.getElementById('fixed-input-installment');
+
+                if (mode === 'simple') {
+                    simpleBtn.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center bg-retro-olive text-retro-bg shadow-md";
+                    instBtn.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center text-retro-olive hover:bg-retro-khaki/50";
+                    simpleInput.classList.remove('hidden');
+                    instInput.classList.add('hidden');
+                } else {
+                    simpleBtn.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center text-retro-olive hover:bg-retro-khaki/50";
+                    instBtn.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center bg-retro-olive text-retro-bg shadow-md";
+                    simpleInput.classList.add('hidden');
+                    instInput.classList.remove('hidden');
+                }
+            },
+
+            addFixed: () => {
+                const name = document.getElementById('fixed-name').value;
+                if(!name) return;
+
+                let newItem;
+                if(store.fixedMode === 'simple') {
+                    const amt = document.getElementById('fixed-amount-simple').value;
+                    if(!amt) return;
+                    newItem = { id: Date.now(), name, amount: parseInt(amt), type: 'simple' };
+                    document.getElementById('fixed-amount-simple').value = '';
+                } else {
+                    const total = document.getElementById('fixed-total').value;
+                    const periods = document.getElementById('fixed-total-periods').value;
+                    const current = document.getElementById('fixed-current-period').value;
+                    if(!total || !periods || !current) return;
+                    
+                    const amount = app.calcInstallment(total, periods, current);
+                    newItem = { 
+                        id: Date.now(), name, amount, type: 'installment',
+                        total, totalPeriods: periods, currentPeriod: current
+                    };
+                    document.getElementById('fixed-total').value = '';
+                    document.getElementById('fixed-total-periods').value = '';
+                    document.getElementById('fixed-current-period').value = '';
+                }
+                store.fixedExpenses.push(newItem);
+                document.getElementById('fixed-name').value = '';
+                app.render();
+                app.saveData();
+            },
+
+            removeFixed: (id) => {
+                store.fixedExpenses = store.fixedExpenses.filter(i => i.id !== id);
+                app.render();
+                app.saveData();
+            },
+
+            setInsMode: (mode) => {
+                store.insMode = mode;
+                const simpleBtn = document.getElementById('ins-mode-simple');
+                const instBtn = document.getElementById('ins-mode-installment');
+                const simpleInput = document.getElementById('ins-input-simple');
+                const instInput = document.getElementById('ins-input-installment');
+
+                if (mode === 'simple') {
+                    simpleBtn.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center bg-retro-khaki text-retro-black shadow-md";
+                    instBtn.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center text-retro-olive hover:bg-retro-khaki/50";
+                    simpleInput.classList.remove('hidden');
+                    simpleInput.classList.add('flex');
+                    instInput.classList.add('hidden');
+                } else {
+                    simpleBtn.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center text-retro-olive hover:bg-retro-khaki/50";
+                    instBtn.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center bg-retro-khaki text-retro-black shadow-md";
+                    simpleInput.classList.add('hidden');
+                    simpleInput.classList.remove('flex');
+                    instInput.classList.remove('hidden');
+                }
+            },
+
+            addInsurance: () => {
+                const name = document.getElementById('ins-name').value;
+                if(!name) return;
+
+                let newItem;
+                if(store.insMode === 'simple') {
+                    const amt = document.getElementById('ins-amount-simple').value;
+                    if(!amt) return;
+                    newItem = { id: Date.now(), name, amount: parseInt(amt), type: 'simple' };
+                    document.getElementById('ins-amount-simple').value = '';
+                } else {
+                    const total = document.getElementById('ins-total').value;
+                    const periods = document.getElementById('ins-total-periods').value;
+                    const current = document.getElementById('ins-current-period').value;
+                    if(!total) return;
+                    const amount = app.calcInstallment(total, periods, current);
+                    newItem = { 
+                        id: Date.now(), name, amount, type: 'installment',
+                        total, totalPeriods: periods, currentPeriod: current
+                    };
+                    document.getElementById('ins-total').value = '';
+                    document.getElementById('ins-total-periods').value = '12';
+                    document.getElementById('ins-current-period').value = '1';
+                }
+                store.insuranceExpenses.push(newItem);
+                document.getElementById('ins-name').value = '';
+                app.render();
+                app.saveData();
+            },
+
+            removeIns: (id) => {
+                store.insuranceExpenses = store.insuranceExpenses.filter(i => i.id !== id);
+                app.render();
+                app.saveData();
+            },
+
+            calcInstallment: (total, periods, current) => {
+                const t = parseInt(total) || 0;
+                const tp = parseInt(periods) || 1;
+                const cp = parseInt(current) || 1;
+                if(t === 0) return 0;
+                const base = Math.floor(t / tp);
+                const rem = t % tp;
+                return cp === 1 ? base + rem : base;
+            },
+
+            formatMoney: (num) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(num),
+
+            saveToHistory: () => {
+                if(!store.salary) {
+                    app.showNotification('請先輸入薪水', 'error');
+                    return;
+                }
+                const newRecord = {
+                    id: Date.now(),
+                    month: store.currentMonth,
+                    salary: store.salary,
+                    savingsInput: parseInt(store.savingsInput)||0,
+                    fixedExpenses: store.fixedExpenses,
+                    insuranceExpenses: store.insuranceExpenses,
+                    timestamp: new Date().toLocaleString()
+                };
+                store.history.unshift(newRecord);
+                app.showNotification("已成功封存帳務！");
+                app.saveData();
+                app.renderHistory();
+            },
+
+            deleteHistory: (id) => {
+                store.history = store.history.filter(h => h.id !== id);
+                app.saveData();
+                app.renderHistory();
+                app.showNotification("已刪除紀錄");
+                app.closeModal();
+            },
+
+            openModal: (action, index) => {
+                const record = store.history[index];
+                if(!record) return;
+                
+                const container = document.getElementById('modal-container');
+                const title = document.getElementById('modal-title');
+                const desc1 = document.getElementById('modal-desc-1');
+                const desc2 = document.getElementById('modal-desc-2');
+                const btn = document.getElementById('modal-confirm-btn');
+                const icon = document.getElementById('modal-icon');
+
+                container.classList.remove('hidden');
+                
+                if(action === 'delete') {
+                    title.innerText = '確定要刪除嗎？';
+                    title.className = "text-lg font-bold text-retro-orange";
+                    icon.classList.remove('hidden');
+                    desc1.innerHTML = `您選擇的月份：<strong class="text-retro-orange">${record.month}</strong>`;
+                    desc2.innerText = "此動作無法復原，這筆紀錄將會永久消失。";
+                    btn.innerText = "確認刪除";
+                    btn.className = "flex-1 py-3.5 rounded-xl text-retro-bg font-bold text-sm shadow-lg transition-all active:scale-95 border border-retro-black bg-retro-orange hover:bg-[#d14e1d]";
+                    btn.onclick = () => { app.deleteHistory(record.id); };
+                } else {
+                    title.innerText = '確定要載入舊資料？';
+                    title.className = "text-lg font-bold text-retro-black";
+                    icon.classList.add('hidden');
+                    desc1.innerHTML = `您選擇的月份：<strong class="text-retro-orange">${record.month}</strong>`;
+                    desc2.innerText = "載入後，您目前的編輯內容將會被此舊資料覆蓋。";
+                    btn.innerText = "確認載入";
+                    btn.className = "flex-1 py-3.5 rounded-xl text-retro-bg font-bold text-sm shadow-lg transition-all active:scale-95 border border-retro-black bg-retro-black hover:bg-[#000000]";
+                    btn.onclick = () => { app.loadHistory(record); };
+                }
+            },
+
+            closeModal: () => {
+                document.getElementById('modal-container').classList.add('hidden');
+            },
+
+            loadHistory: (record) => {
+                store.salary = record.salary;
+                const sInput = record.savingsInput !== undefined ? record.savingsInput : Math.floor(record.salary * 0.3);
+                store.savingsInput = sInput;
+                store.isSavingsManual = sInput != Math.floor(record.salary * 0.3);
+                store.fixedExpenses = record.fixedExpenses || [];
+                store.insuranceExpenses = record.insuranceExpenses || [];
+                store.currentMonth = record.month;
+                
+                app.saveData();
+                app.switchTab('current');
+                app.closeModal();
+                app.showNotification(`已載入 ${record.month} 資料`);
+                app.render();
+            },
+
+            showNotification: (msg, type = 'success') => {
+                const container = document.getElementById('notification-container');
+                const div = document.createElement('div');
+                div.className = `p-4 rounded-xl shadow-2xl flex items-center justify-between text-retro-bg transition-all transform translate-y-0 border border-retro-black ${type === 'error' ? 'bg-retro-orange' : 'bg-retro-black'}`;
+                div.innerHTML = `<span class="font-bold text-sm tracking-wide">${msg}</span>`;
+                container.appendChild(div);
+                setTimeout(() => div.remove(), 3000);
+            },
+
+            // --- UI Rendering ---
+            render: () => {
+                document.getElementById('current-month-input').value = store.currentMonth;
+                document.getElementById('salary-input').value = store.salary;
+                document.getElementById('savings-input').value = store.savingsInput;
+
+                const salary = parseInt(store.salary) || 0;
+                const savings = parseInt(store.savingsInput) || 0;
+                const totalFixed = store.fixedExpenses.reduce((a,b)=>a+(parseInt(b.amount)||0),0);
+                const totalIns = store.insuranceExpenses.reduce((a,b)=>a+(parseInt(b.amount)||0),0);
+                
+                const savingsGoal = Math.floor(salary * 0.3);
+                const insGoal = salary * 0.1;
+                const livingGoal = salary * 0.6;
+                const disposable = salary - savings - totalFixed - totalIns;
+                
+                const [y, m] = store.currentMonth.split('-').map(Number);
+                const days = new Date(y, m, 0).getDate();
+                const daily = Math.floor(disposable / days);
+
+                document.getElementById('disposable-income-display').innerText = app.formatMoney(disposable);
+                document.getElementById('disposable-income-display').className = `text-5xl font-black tracking-tighter ${disposable < 0 ? 'text-retro-orange' : 'text-retro-black'}`;
+                
+                document.getElementById('daily-disposable-display').innerText = app.formatMoney(daily);
+                document.getElementById('daily-disposable-display').className = `text-2xl font-bold ${daily < 0 ? 'text-retro-orange' : 'text-retro-olive'}`;
+                
+                document.getElementById('days-in-month').innerText = `${days} 天平均`;
+                document.getElementById('savings-advice').innerText = app.formatMoney(savingsGoal);
+                document.getElementById('insurance-advice').innerText = app.formatMoney(insGoal);
+                document.getElementById('insurance-total-display').innerText = app.formatMoney(totalIns);
+                document.getElementById('living-budget-advice').innerText = app.formatMoney(livingGoal);
+
+                if(salary > 0) {
+                    const chart = document.getElementById('dashboard-chart');
+                    chart.classList.remove('hidden');
+                    const pSav = (savings/salary)*100;
+                    const pIns = (totalIns/salary)*100;
+                    const pFix = (totalFixed/salary)*100;
+                    const pRem = (disposable/salary)*100;
+                    
+                    document.getElementById('progress-bar-container').innerHTML = `
+                        <div style="width:${pSav}%" class="h-full bg-retro-orange"></div>
+                        <div style="width:${pIns}%" class="h-full bg-retro-khaki"></div>
+                        <div style="width:${pFix}%" class="h-full bg-retro-olive"></div>
+                        ${pRem > 0 ? `<div style="width:${pRem}%" class="h-full bg-retro-gray"></div>` : ''}
+                    `;
+                    document.getElementById('pct-savings').innerText = pSav.toFixed(0) + '%';
+                    document.getElementById('pct-insurance').innerText = pIns.toFixed(0) + '%';
+                    document.getElementById('pct-fixed').innerText = pFix.toFixed(0) + '%';
+                    document.getElementById('pct-remaining').innerText = Math.max(0, pRem).toFixed(0) + '%';
+                }
+
+                // Ins Progress
+                const insRatio = insGoal > 0 ? (totalIns/insGoal)*100 : 0;
+                const insOver = insRatio > 100;
+                let insColor = 'bg-retro-khaki';
+                if(insOver) insColor = 'bg-retro-orange';
+                else if(insRatio > 80) insColor = 'bg-retro-olive';
+                
+                document.getElementById('insurance-progress-container').innerHTML = `
+                    <div class="flex justify-between text-xs mb-1.5 text-retro-olive">
+                        <span>已用: ${app.formatMoney(totalIns)}</span>
+                        <span class="${insOver ? 'text-retro-orange font-bold' : ''}">${insRatio.toFixed(0)}%</span>
+                    </div>
+                    <div class="h-3 w-full bg-retro-bg rounded-full overflow-hidden border border-retro-khaki">
+                        <div class="h-full transition-all duration-500 ${insColor}" style="width: ${Math.min(insRatio, 100)}%"></div>
+                    </div>
+                    ${insOver ? `<div class="text-xs text-retro-orange mt-2 flex items-center font-bold"><i data-lucide="alert-circle" class="w-3 h-3 mr-1.5"></i> 已超支</div>` : ''}
+                `;
+
+                // Fixed Visualizer
+                const fixRatio = livingGoal > 0 ? (totalFixed/livingGoal)*100 : 0;
+                const fixOver = fixRatio > 100;
+                const fixWarn = fixRatio > 80;
+                const remainingLiving = livingGoal - totalFixed;
+                let fixColor = 'bg-retro-olive';
+                if(fixOver) fixColor = 'bg-retro-orange';
+                else if(fixWarn) fixColor = 'bg-retro-khaki';
+
+                document.getElementById('fixed-visualizer').innerHTML = `
+                    <div class="mt-4 bg-retro-bg p-4 rounded-xl border border-retro-olive">
+                        <div class="flex justify-between items-end mb-3">
+                            <div>
+                                <span class="text-[10px] text-retro-olive block mb-0.5 font-bold uppercase tracking-wider">固定支出</span>
+                                <span class="text-sm font-bold ${fixOver ? 'text-retro-orange' : 'text-retro-black'}">${app.formatMoney(totalFixed)}</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[10px] text-retro-olive block mb-0.5 font-bold uppercase tracking-wider">剩餘預算</span>
+                                <span class="text-xl font-bold ${remainingLiving < 0 ? 'text-retro-orange' : 'text-retro-black'}">${app.formatMoney(remainingLiving)}</span>
+                            </div>
+                        </div>
+                        <div class="h-4 w-full bg-white rounded-full overflow-hidden flex border border-retro-olive">
+                            <div class="h-full transition-all duration-500 ${fixColor}" style="width: ${Math.min(fixRatio, 100)}%"></div>
+                        </div>
+                        <div class="flex justify-between mt-2 text-[10px]">
+                            <span class="${fixWarn ? 'text-retro-orange font-bold' : 'text-retro-olive'}">
+                                ${fixOver ? '固定支出已透支' : fixWarn ? '固定支出佔比過高' : '佔用額度'}
+                            </span>
+                            <span class="text-retro-olive">總額度 ${app.formatMoney(livingGoal)}</span>
+                        </div>
+                    </div>
+                `;
+
+                app.renderFixedList();
+                app.renderInsList();
+                lucide.createIcons();
+            },
+
+            renderFixedList: () => {
+                document.getElementById('fixed-list').innerHTML = store.fixedExpenses.map(item => `
+                    <div class="flex justify-between items-center text-sm bg-retro-bg p-3 rounded-xl border border-retro-khaki">
+                        <div class="flex flex-col">
+                            <span class="text-retro-black font-bold mb-0.5">${item.name}</span>
+                            ${item.type === 'installment' 
+                                ? `<span class="text-[10px] text-retro-olive bg-white px-2 py-0.5 rounded border border-retro-khaki w-fit">${item.currentPeriod}/${item.totalPeriods}期 • 總${item.total}</span>`
+                                : `<span class="text-[10px] text-retro-olive bg-white px-2 py-0.5 rounded border border-retro-khaki w-fit">單筆</span>`
+                            }
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="font-bold text-retro-orange">${app.formatMoney(item.amount)}</span>
+                            <button onclick="app.removeFixed(${item.id})" class="text-retro-khaki hover:text-retro-orange p-1 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    </div>
+                `).join('');
+            },
+
+            renderInsList: () => {
+                document.getElementById('insurance-list').innerHTML = store.insuranceExpenses.map(item => `
+                    <div class="flex justify-between items-center text-sm bg-retro-bg p-3 rounded-xl border border-retro-khaki">
+                        <div class="flex flex-col">
+                            <span class="text-retro-black font-bold mb-0.5">${item.name}</span>
+                            ${item.type === 'installment' 
+                                ? `<span class="text-[10px] text-retro-olive bg-white px-2 py-0.5 rounded border border-retro-khaki w-fit">${item.currentPeriod}/${item.totalPeriods}期</span>`
+                                : `<span class="text-[10px] text-retro-olive bg-white px-2 py-0.5 rounded border border-retro-khaki w-fit">單筆</span>`
+                            }
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="font-bold text-retro-olive">${app.formatMoney(item.amount)}</span>
+                            <button onclick="app.removeIns(${item.id})" class="text-retro-khaki hover:text-retro-orange p-1 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    </div>
+                `).join('');
+            },
+
+            renderHistory: () => {
+                const container = document.getElementById('history-list-container');
+                document.getElementById('history-count').innerText = `${store.history.length} 筆`;
+                
+                if(store.history.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-20 text-retro-olive bg-white rounded-3xl border-2 border-retro-khaki border-dashed">
+                            <div class="bg-retro-bg w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+                                <i data-lucide="cloud" class="opacity-40 text-retro-orange w-10 h-10"></i>
+                            </div>
+                            <p class="font-bold text-retro-olive">尚未有歷史紀錄</p>
+                            <p class="text-xs mt-2 text-retro-olive/70">封存後資料將保存於此裝置</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = store.history.map((record, index) => {
+                        const recSalary = parseInt(record.salary) || 0;
+                        const recSavings = record.savingsInput !== undefined ? parseInt(record.savingsInput) : Math.floor(recSalary * 0.3);
+                        const recFixed = (record.fixedExpenses||[]).reduce((a,b)=>a+(parseInt(b.amount)||0),0);
+                        const recIns = (record.insuranceExpenses||[]).reduce((a,b)=>a+(parseInt(b.amount)||0),0);
+                        const recDisposable = recSalary - recSavings - recFixed - recIns;
+
+                        return `
+                        <div class="bg-white p-5 rounded-3xl shadow-[4px_4px_0px_0px_#CCC589] border-2 border-retro-olive hover:translate-y-[-2px] transition-all group mb-4">
+                            <div class="flex justify-between items-start mb-5">
+                                <div>
+                                    <h3 class="font-bold text-xl text-retro-black group-hover:text-retro-orange transition-colors">${record.month}</h3>
+                                    <p class="text-[10px] text-retro-olive mt-1 flex items-center font-bold"><i data-lucide="calendar" class="w-3 h-3 mr-1"></i> ${record.timestamp}</p>
+                                </div>
+                                <div class="px-4 py-2 rounded-xl text-sm font-bold flex flex-col items-end border border-retro-olive/10 ${recDisposable < 0 ? 'bg-retro-orange/10 text-retro-orange' : 'bg-retro-khaki/20 text-retro-olive'}">
+                                    <span class="text-[10px] opacity-60 uppercase mb-0.5">餘額</span>
+                                    ${app.formatMoney(recDisposable)}
+                                </div>
+                            </div>
+                            
+                            <div class="bg-retro-bg rounded-2xl p-4 grid grid-cols-3 gap-4 mb-5 border border-retro-khaki">
+                                <div class="text-center">
+                                    <span class="block text-[10px] text-retro-olive mb-1.5 uppercase font-bold">生活費</span>
+                                    <span class="font-bold text-retro-black text-sm">${app.formatMoney(recFixed)}</span>
+                                </div>
+                                <div class="text-center border-l border-retro-khaki">
+                                    <span class="block text-[10px] text-retro-olive mb-1.5 uppercase font-bold">保險</span>
+                                    <span class="font-bold text-retro-black text-sm">${app.formatMoney(recIns)}</span>
+                                </div>
+                                <div class="text-center border-l border-retro-khaki">
+                                    <span class="block text-[10px] text-retro-olive mb-1.5 uppercase font-bold">儲蓄</span>
+                                    <span class="font-bold text-retro-black text-sm">${app.formatMoney(recSavings)}</span>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-3">
+                                <button onclick="app.openModal('load', ${index})" class="flex-1 bg-retro-black text-retro-bg py-3 rounded-xl text-xs font-bold hover:bg-retro-olive transition-all flex items-center justify-center shadow-md">
+                                    <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 mr-2"></i> 載入編輯
+                                </button>
+                                <button onclick="app.openModal('delete', ${index})" class="px-5 bg-white text-retro-olive rounded-xl hover:bg-retro-orange hover:text-white border-2 border-retro-khaki transition-all font-bold">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>`;
+                    }).join('');
+                    lucide.createIcons();
+                }
+            },
+
+            // --- UI ---
+            switchTab: (tab) => {
+                store.activeTab = tab;
+                if(tab === 'current') {
+                    document.getElementById('tab-current').classList.remove('hidden');
+                    document.getElementById('tab-history').classList.add('hidden');
+                    document.getElementById('nav-btn-current').className = "flex flex-col items-center p-2 rounded-2xl flex-1 transition-all text-retro-orange bg-retro-bg";
+                    document.getElementById('nav-btn-history').className = "flex flex-col items-center p-2 rounded-2xl flex-1 transition-all text-retro-olive hover:bg-retro-khaki/20";
+                } else {
+                    document.getElementById('tab-current').classList.add('hidden');
+                    document.getElementById('tab-history').classList.remove('hidden');
+                    document.getElementById('nav-btn-current').className = "flex flex-col items-center p-2 rounded-2xl flex-1 transition-all text-retro-olive hover:bg-retro-khaki/20";
+                    document.getElementById('nav-btn-history').className = "flex flex-col items-center p-2 rounded-2xl flex-1 transition-all text-retro-orange bg-retro-bg";
+                    app.renderHistory();
+                }
+            },
+
+            openModal: (action, index) => {
+                const record = store.history[index];
+                if(!record) return;
+                
+                const container = document.getElementById('modal-container');
+                const title = document.getElementById('modal-title');
+                const desc1 = document.getElementById('modal-desc-1');
+                const desc2 = document.getElementById('modal-desc-2');
+                const btn = document.getElementById('modal-confirm-btn');
+                const icon = document.getElementById('modal-icon');
+
+                container.classList.remove('hidden');
+                
+                if(action === 'delete') {
+                    title.innerText = '確定要刪除嗎？';
+                    title.className = "text-lg font-bold text-retro-orange";
+                    icon.classList.remove('hidden');
+                    desc1.innerHTML = `您選擇的月份：<strong class="text-retro-orange">${record.month}</strong>`;
+                    desc2.innerText = "此動作無法復原，這筆紀錄將會永久消失。";
+                    btn.innerText = "確認刪除";
+                    btn.className = "flex-1 py-3.5 rounded-xl text-retro-bg font-bold text-sm shadow-lg transition-all active:scale-95 border border-retro-black bg-retro-orange hover:bg-[#d14e1d]";
+                    btn.onclick = () => { app.deleteHistory(record.id); };
+                } else {
+                    title.innerText = '確定要載入舊資料？';
+                    title.className = "text-lg font-bold text-retro-black";
+                    icon.classList.add('hidden');
+                    desc1.innerHTML = `您選擇的月份：<strong class="text-retro-orange">${record.month}</strong>`;
+                    desc2.innerText = "載入後，您目前的編輯內容將會被此舊資料覆蓋。";
+                    btn.innerText = "確認載入";
+                    btn.className = "flex-1 py-3.5 rounded-xl text-retro-bg font-bold text-sm shadow-lg transition-all active:scale-95 border border-retro-black bg-retro-black hover:bg-[#000000]";
+                    btn.onclick = () => { app.loadHistory(record); };
+                }
+            },
+
+            closeModal: () => {
+                document.getElementById('modal-container').classList.add('hidden');
+            },
+
+            deleteHistory: (id) => {
+                store.history = store.history.filter(h => h.id !== id);
+                app.saveData();
+                app.renderHistory();
+                app.showNotification("已刪除紀錄");
+                app.closeModal();
+            },
+
+            loadHistory: (record) => {
+                store.salary = record.salary;
+                const sInput = record.savingsInput !== undefined ? record.savingsInput : Math.floor(record.salary * 0.3);
+                store.savingsInput = sInput;
+                store.isSavingsManual = sInput != Math.floor(record.salary * 0.3);
+                store.fixedExpenses = record.fixedExpenses || [];
+                store.insuranceExpenses = record.insuranceExpenses || [];
+                store.currentMonth = record.month;
+                
+                app.saveData();
+                app.switchTab('current');
+                app.closeModal();
+                app.showNotification(`已載入 ${record.month} 資料`);
+                app.render();
+            },
+
+            showNotification: (msg, type = 'success') => {
+                const container = document.getElementById('notification-container');
+                const div = document.createElement('div');
+                div.className = `p-4 rounded-xl shadow-2xl flex items-center justify-between text-retro-bg transition-all transform translate-y-0 border border-retro-black ${type === 'error' ? 'bg-retro-orange' : 'bg-retro-black'}`;
+                div.innerHTML = `<span class="font-bold text-sm tracking-wide">${msg}</span>`;
+                container.appendChild(div);
+                setTimeout(() => div.remove(), 3000);
+            }
+        };
+
+        // Events
+        document.getElementById('salary-input').addEventListener('input', (e) => app.updateSalary(e.target.value));
+        document.getElementById('savings-input').addEventListener('input', (e) => app.updateSavings(e.target.value));
+        document.getElementById('current-month-input').addEventListener('change', (e) => app.updateMonth(e.target.value));
+        
+        const calcPreview = (ids, targetId) => {
+            const [t, p, c] = ids.map(id => document.getElementById(id).value);
+            const amt = app.calcInstallment(t, p, c);
+            if(t && p && c) document.getElementById(targetId).innerHTML = `本期: <span class="font-bold text-retro-orange text-sm ml-1">${app.formatMoney(amt)}</span>`;
+            else document.getElementById(targetId).innerHTML = `<span class="text-retro-olive/70 font-bold">請填寫完整</span>`;
+        };
+
+        ['fixed-total', 'fixed-total-periods', 'fixed-current-period'].forEach(id => document.getElementById(id).addEventListener('input', () => calcPreview(['fixed-total', 'fixed-total-periods', 'fixed-current-period'], 'fixed-calc-preview')));
+        ['ins-total', 'ins-total-periods', 'ins-current-period'].forEach(id => document.getElementById(id).addEventListener('input', () => calcPreview(['ins-total', 'ins-total-periods', 'ins-current-period'], 'ins-calc-preview')));
+
+        app.init();
+    </script>
+</body>
+</html>
