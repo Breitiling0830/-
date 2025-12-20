@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>復古記帳 | Retro budgeting</title>
-    <meta name="description" content="是一款結合復古美學與實用功能的個人理財工具。透過「薪水分配 6-3-1 法則」自動規劃預算，獨家整合信用卡分期額度管理與繳款對帳功能，讓您輕鬆掌握每月收支與資產狀況。資料儲存於裝置本機，隱私安全有保障。">
+    <meta name="description" content="這是一款結合復古美學與實用功能的個人理財工具。透過「薪水分配 6-3-1 法則」自動規劃預算，獨家整合信用卡分期額度管理與繳款對帳功能，讓您輕鬆掌握每月收支與資產狀況。資料儲存於裝置本機，隱私安全有保障。">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Lucide Icons -->
@@ -822,7 +822,6 @@
                 toggleIcon.classList.remove('rotate-180');
                 
                 app.updateReconcileStats(0, 0);
-                
                 toggleBtn.innerText = `本月消費明細對帳`;
 
                 if(allTx.length === 0) {
@@ -956,7 +955,7 @@
 
                 app.showNotification('繳款成功');
                 app.closePayModal();
-                app.render(); // Full re-render to update icons and lists
+                app.render(); 
                 app.saveData();
             },
 
@@ -1201,6 +1200,7 @@
                 newItem.accountId = accountId;
 
                 const getDeductAmount = (item) => {
+                     // Credit card installment occupies full limit
                      const acc = store.accounts.find(a => a.id === (item.accountId || 'cash_default'));
                      if (acc && acc.type === 'credit' && item.type === 'installment') {
                          return item.total;
@@ -1215,6 +1215,7 @@
                         app.updateAccountBalance(oldItem.accountId || 'cash_default', oldDeduct); // Refund
                     }
                     
+                    // Apply new deduction to Account
                     const acc = store.accounts.find(a => a.id === accountId);
                     let newDeduct = amount;
                     if (acc && acc.type === 'credit' && store.fixedMode === 'installment') {
@@ -1253,6 +1254,7 @@
                 if(item) {
                      const acc = store.accounts.find(a => a.id === (item.accountId || 'cash_default'));
                      let refund = item.amount;
+                     // If CC installment, refund Total
                      if (acc && acc.type === 'credit' && item.type === 'installment') {
                          refund = item.total;
                      }
@@ -1527,7 +1529,7 @@
                     document.getElementById('daily-input-amount').value = '';
                     document.getElementById('daily-input-note').value = '';
                     document.getElementById('daily-input-date').valueAsDate = new Date();
-                    // Ensure disabled state is removed if previously editing a payment
+                    // Ensure disabled state is removed
                     const noteInput = document.getElementById('daily-input-note');
                     noteInput.disabled = false;
                     noteInput.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -1707,7 +1709,7 @@
                 const totalFixed = store.fixedExpenses.reduce((a,b)=>a+(parseInt(b.amount)||0),0);
                 const totalIns = store.insuranceExpenses.reduce((a,b)=>a+(parseInt(b.amount)||0),0);
                 
-                // Calculate Daily Spent but exclude payments (for budget)
+                // Calculate Daily Spent but exclude payments
                 const totalDailySpent = store.dailyExpenses.reduce((sum, item) => {
                     if (item.type === 'payment') return sum;
                     if (item.type === 'income') return sum;
@@ -1965,6 +1967,135 @@
                         </div>
                     </div>
                 `;}).join('');
+            },
+
+            renderHistory: () => {
+                const container = document.getElementById('history-list-container');
+                document.getElementById('history-count').innerText = `${store.history.length} 筆`;
+                
+                if(store.history.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-20 text-retro-olive bg-white rounded-3xl border-2 border-retro-khaki border-dashed">
+                            <div class="bg-retro-bg w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+                                <i data-lucide="cloud" class="opacity-40 text-retro-orange w-10 h-10"></i>
+                            </div>
+                            <p class="font-bold text-retro-olive">尚未有歷史紀錄</p>
+                            <p class="text-xs mt-2 text-retro-olive/70">封存後資料將保存於此裝置</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = store.history.map((record, index) => {
+                        const recSalary = parseInt(record.salary) || 0;
+                        const recSavings = record.savingsInput !== undefined ? parseInt(record.savingsInput) : Math.floor(recSalary * 0.3);
+                        const recFixed = (record.fixedExpenses||[]).reduce((a,b)=>a+(parseInt(b.amount)||0),0);
+                        const recIns = (record.insuranceExpenses||[]).reduce((a,b)=>a+(parseInt(b.amount)||0),0);
+                        const recDisposable = recSalary - recSavings - recFixed - recIns;
+                        
+                        const dailyList = record.dailyExpenses || [];
+                        let totalDailySpent = 0;
+                        let totalDailyIncome = 0;
+                        dailyList.forEach(d => {
+                            if(d.type === 'payment') return;
+                            if(d.type === 'income') totalDailyIncome += (parseInt(d.amount)||0);
+                            else totalDailySpent += (parseInt(d.amount)||0);
+                        });
+
+                        const livingBudget = recSalary * 0.6;
+                        const disposableInitial = livingBudget - recFixed;
+                        const finalRemaining = (disposableInitial + totalDailyIncome) - totalDailySpent;
+
+                        if (store.historyViewMode === 'daily') {
+                            return `
+                            <div class="bg-white p-5 rounded-3xl shadow-[4px_4px_0px_0px_#252422] border-2 border-retro-olive hover:translate-y-[-2px] transition-all group mb-4">
+                                <div class="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h3 class="font-bold text-xl text-retro-black group-hover:text-retro-orange transition-colors">${record.month}</h3>
+                                        <p class="text-[10px] text-retro-olive mt-1 flex items-center font-bold">支出明細</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-xs text-retro-olive">總支出 (不含收入)</div>
+                                        <div class="font-black text-lg text-retro-black">${app.formatMoney(totalDailySpent)}</div>
+                                    </div>
+                                </div>
+                                
+                                <button onclick="app.toggleHistoryDetails(${index})" class="w-full text-center text-xs text-retro-olive/60 py-2 hover:bg-retro-bg rounded-lg mb-3 transition-colors font-bold flex items-center justify-center">
+                                    <span id="hist-toggle-text-${index}">展開細項 (${dailyList.length} 筆)</span>
+                                    <i data-lucide="chevron-down" class="w-3 h-3 ml-1 transition-transform" id="hist-toggle-icon-${index}"></i>
+                                </button>
+
+                                <div id="hist-details-${index}" class="hidden space-y-2 mb-4 max-h-60 overflow-y-auto no-scrollbar border-t border-retro-bg pt-2">
+                                    ${dailyList.length === 0 
+                                        ? `<p class="text-xs text-center text-gray-400 py-2">無記帳紀錄</p>`
+                                        : dailyList.map(d => {
+                                            const isInc = d.type === 'income';
+                                            const isPay = d.type === 'payment';
+                                            let color = 'text-retro-olive'; // Corrected
+                                            if(isPay) color = 'text-retro-orange';
+                                            return `
+                                            <div class="flex justify-between text-xs border-b border-retro-bg/50 pb-2 last:border-0 pt-1">
+                                                <span>${d.note} <span class="text-[10px] text-gray-400 ml-1 bg-retro-bg px-1.5 py-0.5 rounded">${new Date(d.date).toLocaleDateString()}</span></span>
+                                                <span class="font-bold ${color}">${isInc ? '+' : ''}${app.formatMoney(d.amount)}</span>
+                                            </div>`;
+                                        }).join('')
+                                    }
+                                </div>
+
+                                <div class="bg-retro-bg rounded-xl p-3 flex justify-between items-center text-xs font-bold border border-retro-khaki mb-4">
+                                    <span>本月結餘</span>
+                                    <span class="${finalRemaining < 0 ? 'text-retro-orange' : 'text-retro-olive'} text-sm">${app.formatMoney(finalRemaining)}</span>
+                                </div>
+
+                                <div class="flex gap-3">
+                                    <button onclick="app.openModal('load', ${index})" class="flex-1 bg-retro-black text-retro-bg py-3 rounded-xl text-xs font-bold hover:bg-retro-olive transition-all flex items-center justify-center shadow-md">
+                                        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 mr-2"></i> 載入編輯
+                                    </button>
+                                    <button onclick="app.openModal('delete', ${index})" class="px-5 bg-white text-retro-olive rounded-xl hover:bg-retro-orange hover:text-white border-2 border-retro-khaki transition-all font-bold">
+                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>`;
+                        } else {
+                            return `
+                            <div class="bg-white p-5 rounded-3xl shadow-[4px_4px_0px_0px_#CCC589] border-2 border-retro-olive hover:translate-y-[-2px] transition-all group mb-4">
+                                <div class="flex justify-between items-start mb-5">
+                                    <div>
+                                        <h3 class="font-bold text-xl text-retro-black group-hover:text-retro-orange transition-colors">${record.month}</h3>
+                                        <p class="text-[10px] text-retro-olive mt-1 flex items-center font-bold"><i data-lucide="calendar" class="w-3 h-3 mr-1"></i> ${record.timestamp}</p>
+                                    </div>
+                                    <div class="px-4 py-2 rounded-xl text-sm font-bold flex flex-col items-end border border-retro-olive/10 ${recDisposable < 0 ? 'bg-retro-orange/10 text-retro-orange' : 'bg-retro-khaki/20 text-retro-olive'}">
+                                        <span class="text-[10px] opacity-60 uppercase mb-0.5">預算餘額</span>
+                                        ${app.formatMoney(recDisposable)}
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-retro-bg rounded-2xl p-4 grid grid-cols-3 gap-4 mb-5 border border-retro-khaki">
+                                    <div class="text-center">
+                                        <span class="block text-[10px] text-retro-olive mb-1.5 uppercase font-bold">生活費</span>
+                                        <span class="font-bold text-retro-black text-sm">${app.formatMoney(recFixed)}</span>
+                                    </div>
+                                    <div class="text-center border-l border-retro-khaki">
+                                        <span class="block text-[10px] text-retro-olive mb-1.5 uppercase font-bold">保險</span>
+                                        <span class="font-bold text-retro-black text-sm">${app.formatMoney(recIns)}</span>
+                                    </div>
+                                    <div class="text-center border-l border-retro-khaki">
+                                        <span class="block text-[10px] text-retro-olive mb-1.5 uppercase font-bold">儲蓄</span>
+                                        <span class="font-bold text-retro-black text-sm">${app.formatMoney(recSavings)}</span>
+                                    </div>
+                                </div>
+
+                                <div class="flex gap-3">
+                                    <button onclick="app.openModal('load', ${index})" class="flex-1 bg-retro-black text-retro-bg py-3 rounded-xl text-xs font-bold hover:bg-retro-olive transition-all flex items-center justify-center shadow-md">
+                                        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 mr-2"></i> 載入編輯
+                                    </button>
+                                    <button onclick="app.openModal('delete', ${index})" class="px-5 bg-white text-retro-olive rounded-xl hover:bg-retro-orange hover:text-white border-2 border-retro-khaki transition-all font-bold">
+                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>`;
+                        }
+                    }).join('');
+                    lucide.createIcons();
+                }
             },
 
             switchTab: (tab) => {
